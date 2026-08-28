@@ -1,0 +1,28 @@
+<group name="cowrie,honeypot,">
+
+  <rule id="100100" level="8">
+    <field name="eventid">^cowrie\.login\.success$</field>
+    <description>Cowrie honeypot: successful SSH login attempt</description>
+    <group>authentication_success,honeypot,</group>
+  </rule>
+
+  <rule id="100101" level="7">
+    <field name="eventid">^cowrie\.login\.failed$</field>
+    <description>Cowrie honeypot: failed SSH login attempt</description>
+    <group>authentication_failed,honeypot,</group>
+  </rule>
+
+  <rule id="100102" level="7">
+    <field name="eventid">^cowrie\.command\.input$</field>
+    <description>Cowrie honeypot: command executed in emulated shell</description>
+    <group>command_execution,honeypot,</group>
+  </rule>
+
+  <rule id="100103" level="12" frequency="3" timeframe="60">
+    <if_matched_sid>100101</if_matched_sid>
+    <same_field>src_ip</same_field>
+    <description>Cowrie honeypot: possible SSH brute-force attack detected</description>
+    <group>authentication_attack,brute_force,honeypot,</group>
+  </rule>
+
+</group>
