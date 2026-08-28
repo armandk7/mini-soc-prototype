@@ -186,7 +186,7 @@ See [`validation/validation-results.md`](validation/validation-results.md).
 ## Repository Structure
 
 ```text
-mini-soc-prototype/
+blue-team-soc-cowrie-wazuh/
 ├── architecture/
 ├── detection/
 ├── evidence/
