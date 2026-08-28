@@ -1,70 +1,105 @@
 # Blue Team Lab — Cowrie + Wazuh
 
-> Hands-on Blue Team lab for SSH attack simulation, honeypot telemetry, detection, correlation, alerting, and tested containment.
+> Hands-on Blue Team lab demonstrating SSH attack simulation, honeypot telemetry, detection, event correlation, alerting, and tested IP containment.
 
-## Project Overview
+## Overview
 
-This project demonstrates a practical Blue Team workflow using Cowrie as an SSH/Telnet honeypot and Wazuh as the detection and response platform.
+This project demonstrates a practical Blue Team workflow using:
 
-The lab simulates attacker activity from Kali Linux, captures the activity through Cowrie telemetry, analyzes the events with Wazuh, and validates a response mechanism that can block the attacker source IP through the firewall.
+- **Kali Linux** — attacker and attack simulation
+- **Cowrie** — SSH/Telnet honeypot
+- **Wazuh** — detection, correlation, alerting, and response
+- **iptables** — source IP containment
+
+The lab focuses on capturing attacker activity with Cowrie, analyzing the resulting telemetry with Wazuh, and validating a response mechanism that can block the attacker source IP.
 
 ## Architecture
 
+![Blue Team Lab Architecture](architecture/architecture-blueprint.png)
+
 ```text
-Kali Linux (Attacker)
-        |
-        | SSH attack
-        v
+Kali Linux
+   |
+   | SSH attack
+   v
 Cowrie Honeypot
-        |
-        | JSON telemetry
-        v
+   |
+   | JSON telemetry
+   v
 Wazuh Agent
-        |
-        v
+   |
+   v
 Wazuh Manager
-   |         |         |
-Detection  Correlation  Dashboard
-        |
-        v
+   |
+   +--> Detection
+   +--> Correlation
+   +--> Dashboard
+   |
+   v
 Wazuh Active Response
-        |
-        v
+   |
+   v
 iptables / Firewall
-        |
-        v
+   |
+   v
 Source IP blocked
 ```
 
-See [`architecture/`](architecture/) for the project architecture reference.
+## Detection Flow
+
+```text
+Collect
+  |
+  v
+Cowrie JSON telemetry
+  |
+  v
+Wazuh Agent
+  |
+  v
+Custom Wazuh Rules
+  |
+  v
+Detection / Correlation
+  |
+  v
+Alert
+  |
+  v
+Active Response
+  |
+  v
+Firewall Containment
+```
 
 ## Attack Scenarios
 
 ### 1. Successful SSH Login
-An attacker connects to the Cowrie honeypot using SSH. Wazuh detects the successful authentication event with rule `100100`.
+
+A successful SSH login against the Cowrie honeypot is captured and classified by Wazuh rule `100100`.
 
 ### 2. Command Execution
-After authentication, the attacker executes commands inside the emulated shell. Wazuh detects Cowrie command events with rule `100102`.
+
+After authentication, commands executed inside the Cowrie emulated shell are captured as Cowrie command events and detected by rule `100102`.
 
 ### 3. SSH Brute Force
+
 Repeated failed SSH authentication attempts from the same source IP are correlated by Wazuh rule `100103`.
 
 ## Detection Rules
 
-| Rule | Detection | Level |
-|---|---|---:|
-| `100100` | Successful SSH login | 8 |
-| `100101` | Failed SSH login | 7 |
-| `100102` | Command execution | 7 |
-| `100103` | SSH brute-force correlation | 12 |
-
-Rule `100103` correlates 3 matching failed-login events from the same `src_ip` within 60 seconds.
+| Rule | Detection | Level | Logic |
+|---|---|---:|---|
+| `100100` | Successful SSH login | 8 | Matches `cowrie.login.success` |
+| `100101` | Failed SSH login | 7 | Matches `cowrie.login.failed` |
+| `100102` | Command execution | 7 | Matches `cowrie.command.input` |
+| `100103` | SSH brute-force correlation | 12 | 3 failed-login events from the same `src_ip` within 60 seconds |
 
 The validated rule set is available in [`detection/rules-cowrie.xml`](detection/rules-cowrie.xml).
 
 ## Data Collection
 
-Cowrie generates JSON telemetry that is monitored by the Wazuh Agent through a `<localfile>` configuration.
+Cowrie writes JSON telemetry to its log file. The Wazuh Agent on the Cowrie VM monitors that file through `<localfile>`:
 
 ```xml
 <localfile>
@@ -77,16 +112,28 @@ See [`setup/cowrie-log-collection.md`](setup/cowrie-log-collection.md).
 
 ## Active Response
 
-The project also validates Wazuh Active Response for brute-force containment.
+Rule `100103` is connected to the Wazuh Active Response mechanism:
+
+```xml
+<active-response>
+  <disabled>yes</disabled>
+  <command>cowrie-firewall-drop</command>
+  <location>local</location>
+  <rules_id>100103</rules_id>
+  <timeout>300</timeout>
+</active-response>
+```
+
+Response path:
 
 ```text
-Failed SSH attempts
+SSH brute-force activity
         |
         v
-Rule 100103
+Wazuh Rule 100103
         |
         v
-Active Response
+Wazuh Active Response
         |
         v
 cowrie-firewall-drop
@@ -98,24 +145,33 @@ iptables
 Source IP blocked
 ```
 
-Automatic blocking is kept disabled during routine attack simulation so that repeated testing can continue without locking out the attacker. Active Response is enabled during the containment demonstration to verify the blocking action.
+Automatic blocking is intentionally disabled during routine attack simulation so repeated tests can continue without immediately locking out the attacker.
+
+For the containment demonstration, Active Response is enabled to verify that the detected source IP can be blocked through the firewall. The firewall state is restored after testing.
 
 See [`response/active-response.md`](response/active-response.md).
 
 ## Evidence
 
-The repository contains screenshots captured from the validated lab:
+### Successful SSH Detection — Rule 100100
 
-- Successful SSH detection — Rule `100100`
-- Command execution detection — Rule `100102`
-- Brute-force correlation — Rule `100103`
-- Raw Cowrie event
+![Successful SSH Detection](evidence/01-successful-ssh-100100.png)
 
-See [`evidence/`](evidence/).
+### Command Execution — Rule 100102
+
+![Command Execution Events](evidence/02-command-execution-100102-events.png)
+
+![Command Execution Details](evidence/02-command-execution-100102-detail.png)
+
+### Brute-Force Correlation — Rule 100103
+
+![Brute-Force Detection](evidence/03-bruteforce-100103.png)
+
+### Raw Cowrie Event
+
+![Raw Cowrie Event](evidence/04-cowrie-raw-event.png)
 
 ## Validation
-
-The following behaviors were validated during the lab:
 
 | Test | Result |
 |---|---|
@@ -130,7 +186,7 @@ See [`validation/validation-results.md`](validation/validation-results.md).
 ## Repository Structure
 
 ```text
-mini-soc-v2/
+mini-soc-prototype/
 ├── architecture/
 ├── detection/
 ├── evidence/
@@ -145,12 +201,19 @@ mini-soc-v2/
 
 ## Security Notes
 
-Do not commit passwords, API keys, tokens, private keys, `.env` files, or other sensitive data.
+Do not commit:
 
-Credentials exposed during development should be rotated before publishing the repository.
+- passwords
+- API keys
+- tokens
+- private keys
+- `.env` files
+- other sensitive credentials
+
+Credentials exposed during development should be rotated before publishing.
 
 ## Project Status
 
-**Status:** Completed lab validation
+**Status:** Completed and validated
 
-**Focus:** Cowrie telemetry, Wazuh detection, event correlation, alerting, and tested containment.
+**Focus:** Cowrie telemetry, Wazuh detection, event correlation, alerting, and tested IP containment.
